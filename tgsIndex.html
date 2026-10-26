@@ -1,0 +1,306 @@
+
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CineMax - Movie App</title>
+
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:Arial,sans-serif;background:#101018;color:white}
+header{padding:20px 7%;display:flex;justify-content:space-between;align-items:center;gap:15px;background:#171722;flex-wrap:wrap}
+.logo{font-size:25px;font-weight:bold;color:#ff4358}
+nav a{color:white;text-decoration:none;margin-left:18px}
+.search{padding:11px;border-radius:20px;border:1px solid #444;background:#222230;color:white;width:220px;max-width:100%}
+.hero{padding:65px 7%;background:linear-gradient(90deg,#101018,#222033)}
+.hero h1{font-size:40px;margin-bottom:12px}
+.hero p{color:#bbb;line-height:1.6}
+button{cursor:pointer;border:0;border-radius:7px;padding:10px 15px;background:#ff4358;color:white}
+main{padding:30px 7%}
+.filters{display:flex;gap:10px;flex-wrap:wrap;margin:18px 0 25px}
+.filters button{background:#282836}
+.filters button.active{background:#ff4358}
+.movies{display:grid;grid-template-columns:repeat(auto-fill,minmax(145px,1fr));gap:22px}
+.movie{background:#1c1c29;border-radius:12px;overflow:hidden;cursor:pointer;transition:.2s}
+.movie:hover{transform:translateY(-5px)}
+.movie img{width:100%;aspect-ratio:2/3;object-fit:cover;display:block}
+.movie-info{padding:12px}
+.movie h3{font-size:15px;line-height:1.4;margin-bottom:8px}
+.rating{color:#ffd166;font-size:13px}
+.muted{color:#aaa;font-size:13px;margin-top:7px}
+.status{color:#bbb;padding:25px 0;line-height:1.6}
+.modal{position:fixed;inset:0;background:#000d;z-index:10;overflow-y:auto;padding:20px;display:grid;place-items:center}
+.detail{background:#20202d;max-width:750px;width:100%;border-radius:14px;overflow:hidden}
+.detail-top{display:grid;grid-template-columns:190px 1fr;gap:20px;padding:22px}
+.detail img{width:100%;border-radius:8px}
+.detail h2{margin-bottom:12px}
+.detail p{line-height:1.6;color:#ddd;margin:10px 0}
+.close{float:right;margin:12px}
+iframe{width:100%;aspect-ratio:16/9;border:0}
+footer{text-align:center;color:#aaa;padding:30px 15px;font-size:13px;line-height:1.8}
+@media(max-width:600px){
+ header{padding:18px 5%}
+ nav a{margin-left:8px;font-size:13px}
+ .search{width:100%}
+ .hero{padding:45px 5%}
+ .hero h1{font-size:30px}
+ main{padding:25px 5%}
+ .movies{grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+ .detail-top{grid-template-columns:110px 1fr;gap:13px;padding:15px}
+}
+</style>
+</head>
+
+<body x-data="movieApp()" x-init="init()">
+
+<header>
+  <div class="logo">CineMax 🎬</div>
+  <nav>
+    <a href="#" @click.prevent="home()">Beranda</a>
+    <a href="#film">Film</a>
+    <a href="#tentang">Tentang</a>
+  </nav>
+  <input class="search" type="search"
+    placeholder="Cari judul film..."
+    x-model="query" @input.debounce.500ms="searchMovies()">
+</header>
+
+<section class="hero">
+  <h1>Temukan Film Favoritmu</h1>
+  <p>Jelajahi film populer, cari film kesukaanmu,<br>
+  dan temukan informasi film dalam satu tempat.</p>
+  <br>
+  <button @click="home(); document.getElementById('film').scrollIntoView()">
+    Jelajahi Film
+  </button>
+</section>
+
+<main id="film">
+  <h2 x-text="heading"></h2>
+
+  <div class="filters">
+    <button :class="{active:genre===0}" @click="selectGenre(0)">Semua</button>
+    <template x-for="g in genres" :key="g.id">
+      <button :class="{active:genre===g.id}"
+        @click="selectGenre(g.id)" x-text="g.name"></button>
+    </template>
+  </div>
+
+  <p class="status" x-show="loading">Memuat daftar film...</p>
+  <p class="status" x-show="error" x-text="error"></p>
+
+  <div class="movies">
+    <template x-for="m in movies" :key="m.id">
+      <article class="movie" @click="openMovie(m)">
+        <img :src="m.poster_path ? imageBase+m.poster_path : placeholder"
+             :alt="m.title || m.name" loading="lazy">
+        <div class="movie-info">
+          <h3 x-text="m.title || m.name"></h3>
+          <div class="rating">
+            ★ <span x-text="Number(m.vote_average || 0).toFixed(1)"></span>/10
+          </div>
+          <p class="muted" x-text="(m.release_date || '').slice(0,4) || 'Tahun tidak tersedia'"></p>
+        </div>
+      </article>
+    </template>
+  </div>
+
+  <p class="status" x-show="!loading && !error && movies.length===0">
+    Film tidak ditemukan. Coba kata kunci lain.
+  </p>
+
+  <div style="text-align:center;margin-top:30px" x-show="!query && movies.length">
+    <button @click="loadMore()" :disabled="loading">
+      Muat Film Lainnya
+    </button>
+  </div>
+</main>
+
+<!-- Detail film -->
+<div class="modal" x-show="selected" x-cloak @click.self="selected=null"
+     @keydown.escape.window="selected=null">
+  <div class="detail" x-show="selected">
+    <button class="close" @click="selected=null">✕ Tutup</button>
+
+    <div class="detail-top">
+      <img :src="selected && selected.poster_path ? imageBase+selected.poster_path : placeholder"
+           alt="Poster film">
+      <div>
+        <h2 x-text="selected?.title || selected?.name"></h2>
+        <p>⭐ <span x-text="selected ? Number(selected.vote_average || 0).toFixed(1) : ''"></span>/10</p>
+        <p x-text="'Tanggal rilis: '+(selected?.release_date || 'Tidak tersedia')"></p>
+        <p x-text="selected?.overview || 'Sinopsis belum tersedia.'"></p>
+        <p class="muted" x-show="detailLoading">Memuat detail dan trailer...</p>
+        <p class="muted" x-show="selected && !detailLoading && !trailer">
+          Trailer resmi tidak tersedia.
+        </p>
+      </div>
+    </div>
+
+    <iframe x-show="trailer" :src="trailer"
+      title="Trailer film" allowfullscreen
+      allow="accelerometer; autoplay; encrypted-media; picture-in-picture">
+    </iframe>
+  </div>
+</div>
+
+<footer id="tentang">
+  <h3>🎬 Tentang CineMax</h3>
+  <p>CineMax adalah katalog film untuk menemukan informasi,
+  poster, rating, sinopsis, dan trailer film.</p>
+  <p>Data dan gambar film disediakan oleh TMDB.</p>
+  <p>This product uses the TMDB API but is not endorsed or certified by TMDB.</p>
+</footer>
+
+<script>
+function movieApp(){
+  return {
+    apiKey: '44a7652e8b487657389e507ebadf5b76',
+    imageBase: 'https://image.tmdb.org/t/p/w500',
+    placeholder: 'https://placehold.co/500x750/20202d/ffffff?text=No+Poster',
+    movies: [],
+    genres: [],
+    genre: 0,
+    query: '',
+    heading: '🔥 Film Populer',
+    loading: false,
+    error: '',
+    page: 1,
+    selected: null,
+    trailer: '',
+    detailLoading: false,
+
+    async request(path){
+      const url = new URL('https://api.themoviedb.org/3' + path);
+      url.searchParams.set('api_key', this.apiKey);
+      url.searchParams.set('language', 'id-ID');
+
+      const response = await fetch(url);
+      if(!response.ok) throw new Error('Gagal mengambil data TMDB ('+response.status+').');
+      return await response.json();
+    },
+
+    async init(){
+      await Promise.all([this.loadGenres(), this.home()]);
+    },
+
+    async loadGenres(){
+      try{
+        const data = await this.request('/genre/movie/list');
+        this.genres = data.genres || [];
+      }catch(e){
+        this.error = e.message;
+      }
+    },
+
+    async home(){
+      this.query = '';
+      this.genre = 0;
+      this.page = 1;
+      this.heading = '🔥 Film Populer';
+      await this.loadMovies('/movie/popular');
+    },
+
+    async selectGenre(id){
+      this.genre = id;
+      this.query = '';
+      this.page = 1;
+      this.heading = id
+        ? '🎞️ '+(this.genres.find(g=>g.id===id)?.name || 'Film')
+        : '🔥 Film Populer';
+      await this.loadMovies(id ? '/discover/movie&genre='+id : '/movie/popular', true);
+    },
+
+    async loadMovies(path, byGenre=false, append=false){
+      this.loading = true;
+      this.error = '';
+
+      try{
+        let data;
+        if(byGenre){
+          const url = new URL('https://api.themoviedb.org/3/discover/movie');
+          url.searchParams.set('api_key', this.apiKey);
+          url.searchParams.set('language', 'id-ID');
+          url.searchParams.set('with_genres', this.genre);
+          url.searchParams.set('page', this.page);
+          const res = await fetch(url);
+          if(!res.ok) throw new Error('Gagal memuat film ('+res.status+').');
+          data = await res.json();
+        }else{
+          data = await this.request(path+'?page='+this.page);
+        }
+
+        this.movies = append ? [...this.movies,...(data.results || [])] : (data.results || []);
+      }catch(e){
+        this.error = e.message;
+      }finally{
+        this.loading = false;
+      }
+    },
+
+    async searchMovies(){
+      if(!this.query.trim()){
+        this.page = 1;
+        if(this.genre) return this.selectGenre(this.genre);
+        return this.home();
+      }
+      this.page = 1;
+      this.genre = 0;
+      this.heading = '🔎 Hasil Pencarian';
+      this.loading = true;
+      this.error = '';
+      try{
+        const data = await this.request('/search/movie?query='+encodeURIComponent(this.query)+'&page=1');
+        this.movies = data.results || [];
+      }catch(e){
+        this.error = e.message;
+      }finally{
+        this.loading = false;
+      }
+    },
+
+    async loadMore(){
+      if(this.loading) return;
+      this.page++;
+      if(this.query.trim()){
+        this.loading = true;
+        try{
+          const data = await this.request('/search/movie?query='+encodeURIComponent(this.query)+'&page='+this.page);
+          this.movies = [...this.movies,...(data.results || [])];
+        }catch(e){this.error=e.message}
+        finally{this.loading=false}
+      }else{
+        await this.loadMovies(this.genre ? '' : '/movie/popular', !!this.genre, true);
+      }
+    },
+
+    async openMovie(movie){
+      this.selected = movie;
+      this.trailer = '';
+      this.detailLoading = true;
+      try{
+        const data = await this.request('/movie/'+movie.id+'/videos');
+        const videos = data.results || [];
+        const video = videos.find(v=>v.site==='YouTube' && v.type==='Trailer' && v.official)
+          || videos.find(v=>v.site==='YouTube' && v.type==='Trailer')
+          || videos.find(v=>v.site==='YouTube');
+        if(video) this.trailer = 'https://www.youtube-nocookie.com/embed/'+video.key;
+      }catch(e){
+        console.log(e.message);
+      }finally{
+        this.detailLoading = false;
+      }
+    }
+  }
+}
+</script>
+
+<style>
+[x-cloak]{display:none!important}
+button:disabled{opacity:.5;cursor:not-allowed}
+</style>
+</body>
+</html>
